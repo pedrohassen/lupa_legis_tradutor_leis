@@ -20,7 +20,7 @@ O prompt é ancorado: o modelo recebe instrução explícita de resumir apenas o
 
 ---
 
-## Processamento de Documentos Longos (Chunking + Map-Reduce)
+## Processamento de Documentos Longos
 
 Proposições longas são divididas por estrutura semântica — artigos, incisos, parágrafos, ementa, justificativa — e não por contagem de linhas. A divisão respeita as unidades naturais do texto jurídico, com sobreposição entre segmentos para evitar perda de contexto nas bordas:
 
@@ -38,9 +38,9 @@ Cada segmento é resumido individualmente (**rodada 1**). Ao final, os resumos p
 
 ## Fluxo de Processamento
 
-1. **Entrada** — número ou texto bruto da proposição (via API da Câmara ou upload manual)
+1. **Entrada** — número ou texto bruto da proposição
 2. **Busca** — recupera o texto original
 3. **Segmentação** — divide por estrutura jurídica com sobreposição
-4. **Resumo parcial** — resume cada segmento (rodada 1)
-5. **Consolidação** — resume os resumos parciais (rodada 2)
+4. **Resumo parcial** — resume cada segmento
+5. **Consolidação** — resume os resumos parciais
 6. **Saída** — resumo fiel, sem viés, sem acréscimos — apenas o original comprimido
