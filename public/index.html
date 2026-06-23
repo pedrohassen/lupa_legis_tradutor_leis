@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Lupa Legis</title>
+ <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+ <main class="page">
+	<section class="hero">
+	 <span class="eyebrow">Lupa Legis</span>
+	 <h1>Proposições da Câmara com resumo cidadão</h1>
+	 <p class="subtitle">A lista vem da API oficial da Câmara. Ao clicar em uma proposição, a tela abre os detalhes e o resumo gerado pela IA a partir dos dados oficiais.</p>
+	</section>
+
+	<section class="layout">
+	 <div class="panel">
+		<div class="panel-header">
+		 <h2>Proposições recentes</h2>
+		 <p id="listStatus">Carregando lista da Câmara...</p>
+		</div>
+		<div id="list" class="list"></div>
+	 </div>
+
+
+		</div>
+		<div id="detail" class="detail">
+		 <div class="empty">Clique em uma proposição ao lado para abrir os detalhes e o resumo.</div>
+		</div>
+	 </div>
+	</section>
+ </main>
+
+ <script>
+	const state = {
+	 proposicoes: [],
+	 filtradas: [],
+	 selecionadaId: null
+	};
+
+	const listElement = document.getElementById("list");
+	const detailElement = document.getElementById("detail");
+	const listStatusElement = document.getElementById("listStatus");
+	const detailStatusElement = document.getElementById("detailStatus");
+	const searchElement = document.getElementById("search"); // may be null if toolbar removed
+	const reloadButton = document.getElementById("reloadButton"); // may be null
+
+	function escapeHtml(text) {
+	 return String(text ?? "")
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+	}
+
+	function setText(el, txt) {
+	 if (!el) return;
+	 el.textContent = txt;
+	}
+
+	function setHTML(el, html) {
+	 if (!el) return;
+	 el.innerHTML = html;
+	}
+
+	function snippet(text, size = 160) {
+	 const value = String(text ?? "").trim();
+	 if (!value) {
+		return "Sem ementa informada.";
+	 }
+	 if (value.length <= size) {
+		return value;
+	 }
+	 return `${value.slice(0, size).trim()}...`;
+	}
+
+	function filtrarLista() {
+ 	 const termo = searchElement ? searchElement.value.trim().toLowerCase() : "";
+	 if (!termo) {
+		state.filtradas = [...state.proposicoes];
+		return;
+	 }
+
+	 state.filtradas = state.proposicoes.filter((item) => {
+		return [item.titulo, item.ementa, item.ano, item.situacao]
+		 .join(" ")
+		 .toLowerCase()
+		 .includes(termo);
+	 });
+	}
+
+	function renderLista() {
+	 filtrarLista();
+
+	 if (!state.filtradas.length) {
+		listElement.innerHTML = '<div class="empty">Nenhuma proposição encontrada para este filtro.</div>';
+		return;
+	 }
+
+	 listElement.innerHTML = state.filtradas.map((item) => {
+		const active = item.id === state.selecionadaId ? "active" : "";
+		return `
+		 <article class="item ${active}" data-id="${item.id}">
+			<h3 class="item-title">${escapeHtml(item.titulo)}</h3>
+			<div class="meta">
+			 <span class="chip">${escapeHtml(item.ano || "Sem ano")}</span>
+			 <span>${escapeHtml(item.situacao || "Situação não informada")}</span>
+			</div>
+			<p class="excerpt">${escapeHtml(snippet(item.ementa))}</p>
+		 </article>
+		`;
+	 }).join("");
+
+	 listElement.querySelectorAll(".item").forEach((card) => {
+		card.addEventListener("click", () => carregarDetalhe(card.dataset.id));
+	 });
+	}
+
+	function renderDetalheVazio(mensagem) {
+	 detailElement.innerHTML = `<div class="empty">${escapeHtml(mensagem)}</div>`;
+	}
+
+	function renderDetalhe(data) {
+	 const autores = (data.autores || []).map((autor) => autor.nome).filter(Boolean);
+	 const tramitacoes = data.tramitacoes || [];
+
+	 detailElement.innerHTML = `
+		<h3>${escapeHtml(data.proposicao.titulo)}</h3>
+		<div class="meta">
+		 <span class="chip">${escapeHtml(data.proposicao.siglaTipo || "Proposição")}</span>
+		 <span>${escapeHtml(data.proposicao.numero ? `${data.proposicao.numero}/${data.proposicao.ano}` : data.proposicao.ano || "")}</span>
+		 <span>${escapeHtml(data.proposicao.situacao || "Situação não informada")}</span>
+		</div>
+
+		<div class="details-grid">
+		 <div class="section">
+			<h4>Ementa</h4>
+			<p class="detail-text">${escapeHtml(data.proposicao.ementa || "Não informada")}</p>
+		 </div>
+
+		 <div class="section">
+			<h4>Autores</h4>
+			<p class="detail-text">${escapeHtml(autores.length ? autores.join(", ") : "Não informado")}</p>
+		 </div>
+
+		 <div class="section">
+			<h4>Tramitação recente</h4>
+			<p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${item.data || ""} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
+		 </div>
+
+		 <div class="section">
+			<h4>Resumo da IA</h4>
+			<div class="summary-box">
+			${(function(){
+			 const r = data.resumo;
+			 if (!r) return escapeHtml('Resumo não disponível.');
+			 if (typeof r === 'object') {
+				 // Se for o objeto esperado, renderiza campos estruturados
+				 if (r.objetivo || r.impactados || r.mudancas_praticas || r.termos_tecnicos_explicados || r.limites) {
+					 return `
+					 <strong>Objetivo:</strong> ${escapeHtml(r.objetivo || '')}\n\n
+					 <strong>Impactados:</strong> ${escapeHtml(r.impactados || '')}\n\n
+					 <strong>Mudanças práticas:</strong> ${escapeHtml(r.mudancas_praticas || '')}\n\n
+					 <strong>Termos técnicos explicados:</strong> ${escapeHtml(r.termos_tecnicos_explicados || '')}\n\n
+					 <strong>Limites:</strong> ${escapeHtml(r.limites || '')}
+					 `;
+				 }
+				 // fallback object (texto limpo)
+				 return escapeHtml(r.fallback_text || r.raw || JSON.stringify(r));
+			 }
+			 // string
+			 return escapeHtml(String(r));
+			})()}
+			</div>
+		 </div>
+		</div>
+	 `;
+	}
+
+	async function carregarLista() {
+	 setText(listStatusElement, "Carregando lista da Câmara...");
+	 if (reloadButton) reloadButton.disabled = true;
+
+	 try {
+		const response = await fetch("/api/proposicoes?itens=12");
+		const data = await response.json();
+
+		if (!response.ok) {
+		 throw new Error(data.erro || "Não foi possível carregar a lista.");
+		}
+
+		state.proposicoes = data.proposicoes || [];
+		state.filtradas = [...state.proposicoes];
+		state.selecionadaId = null;
+		setText(listStatusElement, `${state.proposicoes.length} proposições carregadas.`);
+		renderLista();
+		renderDetalheVazio("Clique em uma proposição ao lado para abrir os detalhes e o resumo.");
+		setText(detailStatusElement, "Selecione uma proposição para ver o resumo.");
+	 } catch (error) {
+		setText(listStatusElement, "Falha ao carregar a lista.");
+		setHTML(listElement, `<div class="empty">${escapeHtml(error.message || "Erro inesperado.")}</div>`);
+	 } finally {
+		if (reloadButton) reloadButton.disabled = false;
+	 }
+	}
+
+	async function carregarDetalhe(id) {
+	 if (!id) {
+		return;
+	 }
+
+	 state.selecionadaId = Number(id);
+	 renderLista();
+	 setText(detailStatusElement, "Carregando detalhes e resumo...");
+	 setHTML(detailElement, '<div class="loading">Consultando a Câmara e gerando o resumo...</div>');
+
+	 try {
+		const response = await fetch(`/api/proposicoes/${id}`);
+		const data = await response.json();
+
+		if (!response.ok) {
+		 throw new Error(data.erro || "Não foi possível carregar os detalhes.");
+		}
+
+			setText(detailStatusElement, "Detalhes carregados.");
+			renderDetalhe(data);
+	 } catch (error) {
+			setText(detailStatusElement, "Falha ao carregar detalhes.");
+			renderDetalheVazio(error.message || "Erro inesperado ao abrir os detalhes.");
+	 }
+	}
+
+	if (searchElement) searchElement.addEventListener("input", renderLista);
+	if (reloadButton) reloadButton.addEventListener("click", carregarLista);
+
+	carregarLista();
+ </script>
+</body>
+</html>
