@@ -152,8 +152,9 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
 
 app.get("/api/proposicoes", async (req, res) => {
   try {
-    const itens = Math.min(Number(req.query.itens) || 12, 20);
-    const url = `${CAMARA_API_BASE}/proposicoes?ordem=DESC&ordenarPor=id&itens=${itens}`;
+    const itens = Math.min(Math.max(Number(req.query.itens) || 12, 1), 20);
+    const pagina = Math.max(Number(req.query.pagina) || 1, 1);
+    const url = `${CAMARA_API_BASE}/proposicoes?ordem=DESC&ordenarPor=id&itens=${itens}&pagina=${pagina}`;
     const data = await buscarJson(url);
 
     const proposicoes = (data.dados ?? []).map((proposicao) => ({
@@ -167,7 +168,12 @@ app.get("/api/proposicoes", async (req, res) => {
       dataApresentacao: proposicao.dataApresentacao
     }));
 
-    res.json({ proposicoes });
+    res.json({
+      proposicoes,
+      pagina,
+      itens,
+      consulta: url
+    });
   } catch (error) {
     res.status(502).json({ erro: "Erro ao consultar a Câmara.", detalhe: error.message });
   }
