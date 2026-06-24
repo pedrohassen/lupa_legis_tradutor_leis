@@ -25,12 +25,21 @@ function montarTituloProposicao(proposicao) {
 }
 
 async function buscarJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const detalhe = await response.text();
-    throw new Error(`Falha ao consultar ${url}: ${response.status} - ${detalhe}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) {
+      const detalhe = await response.text();
+      throw new Error(`Falha ao consultar ${url}: ${response.status} - ${detalhe}`);
+    }
+    return response.json();
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error(`Tempo limite esgotado ao consultar a API da Câmara. Tente novamente.`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json();
 }
 
 async function consultarOpenRouter(messages, maxCompletionTokens = 220) {
@@ -105,6 +114,7 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
       impactados: "Não está explícito no texto fornecido.",
       mudancas_praticas: "Não está explícito no texto fornecido.",
       termos_tecnicos_explicados: montarTituloProposicao(proposicao),
+      previsao_vigencia: "Não está explícito no texto fornecido.",
       limites: "Resumo automático sem LLM, baseado apenas nos dados oficiais da Câmara."
     };
   }
@@ -114,7 +124,7 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
     {
       role: "system",
       content:
-        "Você é o assistente do projeto Lupa Legis. Responda estritamente com um objeto JSON válido (apenas o JSON) com as chaves: objetivo, impactados, mudancas_praticas, termos_tecnicos_explicados, limites. Cada valor deve ser uma string em português do Brasil. Não use Markdown, não insira asteriscos, não inclua texto fora do objeto JSON. Seja conciso; procure manter o texto total entre 180 e 250 palavras."
+        "Você é o assistente do projeto Lupa Legis. Responda estritamente com um objeto JSON válido (apenas o JSON) com as chaves: objetivo, impactados, mudancas_praticas, termos_tecnicos_explicados, previsao_vigencia, limites. Cada valor deve ser uma string em português do Brasil. O campo previsao_vigencia deve indicar quando a proposição entraria em vigor caso aprovada (ex: imediatamente, 90 dias após publicação, 1º de janeiro do ano seguinte etc.); se o texto não mencionar prazo, escreva exatamente: Não está explícito no texto fornecido. Não use Markdown, não insira asteriscos, não inclua texto fora do objeto JSON. Seja conciso; procure manter o texto total entre 200 e 270 palavras."
     },
     {
       role: "user",
@@ -150,11 +160,28 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
   return { fallback_text: cleaned, raw: cleaned };
 }
 
+app.get("/api/temas", async (req, res) => {
+  try {
+    const data = await buscarJson(`${CAMARA_API_BASE}/referencias/proposicoes/codTema`);
+    res.json({ temas: data.dados ?? [] });
+  } catch (error) {
+    res.status(502).json({ erro: "Erro ao buscar categorias.", detalhe: error.message });
+  }
+});
+
 app.get("/api/proposicoes", async (req, res) => {
   try {
     const itens = Math.min(Math.max(Number(req.query.itens) || 12, 1), 20);
     const pagina = Math.max(Number(req.query.pagina) || 1, 1);
-    const url = `${CAMARA_API_BASE}/proposicoes?ordem=DESC&ordenarPor=id&itens=${itens}&pagina=${pagina}`;
+
+    const params = new URLSearchParams({ ordem: "DESC", ordenarPor: "id", itens: String(itens), pagina: String(pagina) });
+    if (req.query.siglaTipo) params.append("siglaTipo", req.query.siglaTipo);
+    if (req.query.numero)    params.append("numero",    req.query.numero);
+    if (req.query.ano)       params.append("ano",       req.query.ano);
+    if (req.query.keywords)  params.append("keywords",  req.query.keywords);
+    if (req.query.codTema)   params.append("codTema",   req.query.codTema);
+
+    const url = `${CAMARA_API_BASE}/proposicoes?${params.toString()}`;
     const data = await buscarJson(url);
 
     const proposicoes = (data.dados ?? []).map((proposicao) => ({

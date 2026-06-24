@@ -41,3 +41,6 @@ pnpm-debug.log*
 *.sqlite3
 .cache/
 .eslintcache
+
+# Ferramentas de desenvolvimento local
+.claude/

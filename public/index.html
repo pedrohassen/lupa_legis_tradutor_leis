@@ -1,234 +1,345 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
- <meta charset="UTF-8" />
- <meta name="viewport" content="width=device-width, initial-scale=1.0" />
- <title>Lupa Legis</title>
- <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lupa Legis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
- <main class="page">
-	<section class="hero">
-	 <span class="eyebrow">Lupa Legis</span>
-	 <h1>Proposições da Câmara com resumo cidadão</h1>
-	 <p class="subtitle">A lista vem da API oficial da Câmara. Ao clicar em uma proposição, a tela abre os detalhes e o resumo gerado pela IA a partir dos dados oficiais.</p>
-	</section>
 
-	<section class="layout">
-	 <div class="panel">
-		<div class="panel-header">
-		 <h2>Proposições recentes</h2>
-		 <p id="listStatus">Carregando lista da Câmara...</p>
-		</div>
-		<div id="list" class="list"></div>
-		<div class="panel-footer">
-		 <div class="pagination">
-		  <button id="prevPageButton" type="button">Anterior</button>
-		  <button id="nextPageButton" type="button">Próxima</button>
-		 </div>
-		 <span id="pageLabel" class="page-label">Página 1</span>
-		</div>
-	 </div>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+        <span class="eyebrow">Lupa Legis</span>
+      </div>
+      <h1>Proposições da Câmara<br>com resumo cidadão</h1>
+      <p class="subtitle">Consulte projetos de lei, PECs, requerimentos e muito mais. Ao selecionar uma proposição, a IA gera um resumo acessível a partir dos dados oficiais da Câmara dos Deputados.</p>
+    </div>
+  </header>
 
-	 <div class="panel">
-		<div class="panel-header">
-		 <h2>Detalhes</h2>
-		 <p id="detailStatus">Selecione uma proposição para ver o resumo.</p>
-		</div>
-		<div id="detail" class="detail">
-		 <div class="empty">Clique em uma proposição ao lado para abrir os detalhes e o resumo.</div>
-		</div>
-	 </div>
-	</section>
- </main>
+  <main class="page">
+    <section class="layout">
 
- <script>
-	const pageSize = 12;
-	const state = {
-	 proposicoes: [],
-	 filtradas: [],
-	 selecionadaId: null,
-	 paginaAtual: 1
-	};
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Proposições</h2>
+          <p id="listStatus">Carregando da API da Câmara...</p>
+        </div>
 
-	const listElement = document.getElementById("list");
-	const detailElement = document.getElementById("detail");
-	const listStatusElement = document.getElementById("listStatus");
-	const detailStatusElement = document.getElementById("detailStatus");
-	const prevPageButton = document.getElementById("prevPageButton");
-	const nextPageButton = document.getElementById("nextPageButton");
-	const pageLabelElement = document.getElementById("pageLabel");
+        <div class="search-form">
+          <div class="search-field">
+            <label for="searchKeywords">Palavras-chave</label>
+            <input type="text" id="searchKeywords" class="search-input" placeholder="ex: educação, saúde, previdência..." />
+          </div>
+          <div class="search-row">
+            <div class="search-field">
+              <label for="searchTipo">Tipo</label>
+              <select id="searchTipo" class="search-select">
+                <option value="">Todos</option>
+                <option value="PL">PL</option>
+                <option value="PEC">PEC</option>
+                <option value="RIC">RIC</option>
+                <option value="PLP">PLP</option>
+                <option value="PDC">PDC</option>
+                <option value="MPV">MPV</option>
+                <option value="REQ">REQ</option>
+              </select>
+            </div>
+            <div class="search-field">
+              <label for="searchNumero">Número</label>
+              <input type="number" id="searchNumero" class="search-input" placeholder="1234" min="1" />
+            </div>
+            <div class="search-field">
+              <label for="searchAno">Ano</label>
+              <input type="number" id="searchAno" class="search-input" placeholder="2024" min="1900" max="2030" />
+            </div>
+          </div>
+          <div class="search-field">
+            <label for="searchTema">Categoria</label>
+            <select id="searchTema" class="search-select">
+              <option value="">Todas as categorias</option>
+            </select>
+          </div>
+          <div class="search-actions">
+            <button type="button" id="searchButton">Buscar</button>
+            <button type="button" id="resetButton" class="btn-secondary">Limpar</button>
+          </div>
+        </div>
 
-	function escapeHtml(text) {
-	 return String(text ?? "")
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\"/g, "&quot;")
-		.replace(/'/g, "&#39;");
-	}
+        <div id="list" class="list"></div>
 
-	function setText(el, txt) {
-	 if (!el) return;
-	 el.textContent = txt;
-	}
+        <div class="panel-footer">
+          <div class="pagination">
+            <button id="prevPageButton" type="button">&#8592; Anterior</button>
+            <button id="nextPageButton" type="button">Próxima &#8594;</button>
+          </div>
+          <span id="pageLabel" class="page-label">Página 1</span>
+        </div>
+      </div>
 
-	function setHTML(el, html) {
-	 if (!el) return;
-	 el.innerHTML = html;
-	}
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Detalhes &amp; Resumo IA</h2>
+          <p id="detailStatus">Selecione uma proposição para ver o resumo.</p>
+        </div>
+        <div id="detail" class="detail">
+          <div class="empty">Clique em uma proposição ao lado para abrir os detalhes e o resumo gerado pela IA.</div>
+        </div>
+      </div>
 
-	function snippet(text, size = 160) {
-	 const value = String(text ?? "").trim();
-	 if (!value) return "Sem ementa informada.";
-	 return value.length <= size ? value : `${value.slice(0, size).trim()}...`;
-	}
+    </section>
+  </main>
 
-	function renderLista() {
-	 setText(pageLabelElement, `Página ${state.paginaAtual}`);
-	 if (prevPageButton) prevPageButton.disabled = state.paginaAtual <= 1;
+  <footer class="footer">
+    <span>IA 05 &middot; 2026</span>
+    <span aria-hidden="true">&middot;</span>
+    <span>Dados via <a href="https://dadosabertos.camara.leg.br" target="_blank" rel="noopener">API Câmara dos Deputados</a></span>
+  </footer>
 
-	 if (!state.filtradas.length) {
-		setHTML(listElement, '<div class="empty">Nenhuma proposição encontrada nesta página.</div>');
-		return;
-	 }
+  <script>
+    const pageSize = 12;
+    const state = {
+      proposicoes: [],
+      filtradas: [],
+      selecionadaId: null,
+      paginaAtual: 1,
+      filtros: { keywords: "", siglaTipo: "", numero: "", ano: "", codTema: "" }
+    };
 
-	 setHTML(listElement, state.filtradas.map((item) => {
-		const active = item.id === state.selecionadaId ? "active" : "";
-		return `
-		 <article class="item ${active}" data-id="${item.id}">
-			<h3 class="item-title">${escapeHtml(item.titulo)}</h3>
-			<div class="meta">
-			 <span class="chip">${escapeHtml(item.ano || "Sem ano")}</span>
-			 <span>${escapeHtml(item.situacao || "Situação não informada")}</span>
-			</div>
-			<p class="excerpt">${escapeHtml(snippet(item.ementa))}</p>
-		 </article>
-		`;
-	 }).join(""));
+    const listElement = document.getElementById("list");
+    const detailElement = document.getElementById("detail");
+    const listStatusElement = document.getElementById("listStatus");
+    const detailStatusElement = document.getElementById("detailStatus");
+    const prevPageButton = document.getElementById("prevPageButton");
+    const nextPageButton = document.getElementById("nextPageButton");
+    const pageLabelElement = document.getElementById("pageLabel");
 
-	 listElement.querySelectorAll(".item").forEach((card) => {
-		card.addEventListener("click", () => carregarDetalhe(card.dataset.id));
-	 });
-	}
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
 
-	function renderDetalheVazio(mensagem) {
-	 setHTML(detailElement, `<div class="empty">${escapeHtml(mensagem)}</div>`);
-	}
+    function setText(el, txt) {
+      if (!el) return;
+      el.textContent = txt;
+    }
 
-	function renderDetalhe(data) {
-	 const autores = (data.autores || []).map((autor) => autor.nome).filter(Boolean);
-	 const tramitacoes = data.tramitacoes || [];
+    function setHTML(el, html) {
+      if (!el) return;
+      el.innerHTML = html;
+    }
 
-	 setHTML(detailElement, `
-		<h3>${escapeHtml(data.proposicao.titulo)}</h3>
-		<div class="meta">
-		 <span class="chip">${escapeHtml(data.proposicao.siglaTipo || "Proposição")}</span>
-		 <span>${escapeHtml(data.proposicao.numero ? `${data.proposicao.numero}/${data.proposicao.ano}` : data.proposicao.ano || "")}</span>
-		 <span>${escapeHtml(data.proposicao.situacao || "Situação não informada")}</span>
-		</div>
+    function snippet(text, size = 160) {
+      const value = String(text ?? "").trim();
+      if (!value) return "Sem ementa informada.";
+      return value.length <= size ? value : `${value.slice(0, size).trim()}...`;
+    }
 
-		<div class="details-grid">
-		 <div class="section">
-			<h4>Ementa</h4>
-			<p class="detail-text">${escapeHtml(data.proposicao.ementa || "Não informada")}</p>
-		 </div>
+    function renderLista() {
+      setText(pageLabelElement, `Página ${state.paginaAtual}`);
+      if (prevPageButton) prevPageButton.disabled = state.paginaAtual <= 1;
 
-		 <div class="section">
-			<h4>Autores</h4>
-			<p class="detail-text">${escapeHtml(autores.length ? autores.join(", ") : "Não informado")}</p>
-		 </div>
+      if (!state.filtradas.length) {
+        setHTML(listElement, '<div class="empty">Nenhuma proposição encontrada nesta página.</div>');
+        return;
+      }
 
-		 <div class="section">
-			<h4>Tramitação recente</h4>
-			<p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${item.data || ""} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
-		 </div>
+      setHTML(listElement, state.filtradas.map((item) => {
+        const active = item.id === state.selecionadaId ? "active" : "";
+        return `
+          <article class="item ${active}" data-id="${item.id}">
+            <h3 class="item-title">${escapeHtml(item.titulo)}</h3>
+            <div class="meta">
+              <span class="chip">${escapeHtml(item.ano || "Sem ano")}</span>
+              <span>${escapeHtml(item.situacao || "Situação não informada")}</span>
+            </div>
+            <p class="excerpt">${escapeHtml(snippet(item.ementa))}</p>
+          </article>
+        `;
+      }).join(""));
 
-		 <div class="section">
-			<h4>Resumo da IA</h4>
-			<div class="summary-box">
-			${(function () {
-			 const r = data.resumo;
-			 if (!r) return escapeHtml("Resumo não disponível.");
-			 if (typeof r === "object") {
-				 if (r.objetivo || r.impactados || r.mudancas_praticas || r.termos_tecnicos_explicados || r.limites) {
-					 return `
-					 <strong>Objetivo:</strong> ${escapeHtml(r.objetivo || "")}\n\n
-					 <strong>Impactados:</strong> ${escapeHtml(r.impactados || "")}\n\n
-					 <strong>Mudanças práticas:</strong> ${escapeHtml(r.mudancas_praticas || "")}\n\n
-					 <strong>Termos técnicos explicados:</strong> ${escapeHtml(r.termos_tecnicos_explicados || "")}\n\n
-					 <strong>Limites:</strong> ${escapeHtml(r.limites || "")}
-					 `;
-				 }
-				 return escapeHtml(r.fallback_text || r.raw || JSON.stringify(r));
-			 }
-			 return escapeHtml(String(r));
-			})()}
-			</div>
-		 </div>
-		</div>
-	 `);
-	}
+      listElement.querySelectorAll(".item").forEach((card) => {
+        card.addEventListener("click", () => carregarDetalhe(card.dataset.id));
+      });
+    }
 
-	async function carregarLista(pagina = state.paginaAtual) {
-	 const paginaNormalizada = Math.max(1, Number(pagina) || 1);
-	 setText(listStatusElement, `Carregando página ${paginaNormalizada}...`);
-	 if (prevPageButton) prevPageButton.disabled = true;
-	 if (nextPageButton) nextPageButton.disabled = true;
+    function renderDetalheVazio(mensagem) {
+      setHTML(detailElement, `<div class="empty">${escapeHtml(mensagem)}</div>`);
+    }
 
-	 try {
-		const response = await fetch(`/api/proposicoes?itens=${pageSize}&pagina=${paginaNormalizada}`);
-		const data = await response.json();
+    function renderDetalhe(data) {
+      const autores = (data.autores || []).map((autor) => autor.nome).filter(Boolean);
+      const tramitacoes = data.tramitacoes || [];
 
-		if (!response.ok) {
-		 throw new Error(data.erro || "Não foi possível carregar a lista.");
-		}
+      setHTML(detailElement, `
+        <h3>${escapeHtml(data.proposicao.titulo)}</h3>
+        <div class="meta">
+          <span class="chip">${escapeHtml(data.proposicao.siglaTipo || "Proposição")}</span>
+          <span>${escapeHtml(data.proposicao.numero ? `${data.proposicao.numero}/${data.proposicao.ano}` : data.proposicao.ano || "")}</span>
+          <span>${escapeHtml(data.proposicao.situacao || "Situação não informada")}</span>
+        </div>
 
-		state.proposicoes = data.proposicoes || [];
-		state.filtradas = [...state.proposicoes];
-		state.selecionadaId = null;
-		state.paginaAtual = Number(data.pagina) || paginaNormalizada;
-		setText(listStatusElement, `${state.proposicoes.length} proposições carregadas.`);
-		renderLista();
-		renderDetalheVazio("Clique em uma proposição ao lado para abrir os detalhes e o resumo.");
-		setText(detailStatusElement, "Selecione uma proposição para ver o resumo.");
-	 } catch (error) {
-		setText(listStatusElement, "Falha ao carregar a lista.");
-		setHTML(listElement, `<div class="empty">${escapeHtml(error.message || "Erro inesperado.")}</div>`);
-	 } finally {
-		if (prevPageButton) prevPageButton.disabled = state.paginaAtual <= 1;
-		if (nextPageButton) nextPageButton.disabled = false;
-	 }
-	}
+        <div class="details-grid">
+          <div class="section">
+            <h4>Ementa</h4>
+            <p class="detail-text">${escapeHtml(data.proposicao.ementa || "Não informada")}</p>
+          </div>
 
-	async function carregarDetalhe(id) {
-	 if (!id) return;
+          <div class="section">
+            <h4>Autores</h4>
+            <p class="detail-text">${escapeHtml(autores.length ? autores.join(", ") : "Não informado")}</p>
+          </div>
 
-	 state.selecionadaId = Number(id);
-	 renderLista();
-	 setText(detailStatusElement, "Carregando detalhes e resumo...");
-	 setHTML(detailElement, '<div class="loading">Consultando a Câmara e gerando o resumo...</div>');
+          <div class="section">
+            <h4>Tramitação recente</h4>
+            <p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${item.data || ""} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
+          </div>
 
-	 try {
-		const response = await fetch(`/api/proposicoes/${id}`);
-		const data = await response.json();
+          <div class="section">
+            <h4>Resumo da IA</h4>
+            <div class="summary-box">
+            ${(function () {
+              const r = data.resumo;
+              if (!r) return escapeHtml("Resumo não disponível.");
+              if (typeof r === "object") {
+                if (r.objetivo || r.impactados || r.mudancas_praticas || r.termos_tecnicos_explicados || r.previsao_vigencia || r.limites) {
+                  return `<strong>Objetivo:</strong> ${escapeHtml(r.objetivo || "")}\n\n<strong>Impactados:</strong> ${escapeHtml(r.impactados || "")}\n\n<strong>Mudanças práticas:</strong> ${escapeHtml(r.mudancas_praticas || "")}\n\n<strong>Termos técnicos explicados:</strong> ${escapeHtml(r.termos_tecnicos_explicados || "")}\n\n<strong>Previsão de vigência:</strong> ${escapeHtml(r.previsao_vigencia || "Não está explícito no texto fornecido.")}\n\n<strong>Limites:</strong> ${escapeHtml(r.limites || "")}`;
+                }
+                return escapeHtml(r.fallback_text || r.raw || JSON.stringify(r));
+              }
+              return escapeHtml(String(r));
+            })()}
+            </div>
+          </div>
+        </div>
+      `);
+    }
 
-		if (!response.ok) {
-		 throw new Error(data.erro || "Não foi possível carregar os detalhes.");
-		}
+    async function carregarLista(pagina = state.paginaAtual) {
+      const paginaNormalizada = Math.max(1, Number(pagina) || 1);
+      setText(listStatusElement, `Carregando página ${paginaNormalizada}...`);
+      if (prevPageButton) prevPageButton.disabled = true;
+      if (nextPageButton) nextPageButton.disabled = true;
 
-		setText(detailStatusElement, "Detalhes carregados.");
-		renderDetalhe(data);
-	 } catch (error) {
-		setText(detailStatusElement, "Falha ao carregar detalhes.");
-		renderDetalheVazio(error.message || "Erro inesperado ao abrir os detalhes.");
-	 }
-	}
+      try {
+        const p = new URLSearchParams({ itens: String(pageSize), pagina: String(paginaNormalizada) });
+        const f = state.filtros;
+        if (f.keywords) p.append("keywords", f.keywords);
+        if (f.siglaTipo) p.append("siglaTipo", f.siglaTipo);
+        if (f.numero)   p.append("numero",    f.numero);
+        if (f.ano)      p.append("ano",       f.ano);
+        if (f.codTema)  p.append("codTema",   f.codTema);
+        const response = await fetch(`/api/proposicoes?${p.toString()}`);
+        const data = await response.json();
 
-	if (prevPageButton) prevPageButton.addEventListener("click", () => carregarLista(state.paginaAtual - 1));
-	if (nextPageButton) nextPageButton.addEventListener("click", () => carregarLista(state.paginaAtual + 1));
+        if (!response.ok) {
+          throw new Error(data.erro || "Não foi possível carregar a lista.");
+        }
 
-	carregarLista(1);
- </script>
+        state.proposicoes = data.proposicoes || [];
+        state.filtradas = [...state.proposicoes];
+        state.selecionadaId = null;
+        state.paginaAtual = Number(data.pagina) || paginaNormalizada;
+        setText(listStatusElement, `${state.proposicoes.length} proposições carregadas.`);
+        renderLista();
+        renderDetalheVazio("Clique em uma proposição ao lado para abrir os detalhes e o resumo.");
+        setText(detailStatusElement, "Selecione uma proposição para ver o resumo.");
+      } catch (error) {
+        setText(listStatusElement, "Falha ao carregar a lista.");
+        setHTML(listElement, `<div class="empty">${escapeHtml(error.message || "Erro inesperado.")}</div>`);
+      } finally {
+        if (prevPageButton) prevPageButton.disabled = state.paginaAtual <= 1;
+        if (nextPageButton) nextPageButton.disabled = false;
+      }
+    }
+
+    async function carregarDetalhe(id) {
+      if (!id) return;
+
+      state.selecionadaId = Number(id);
+      renderLista();
+      setText(detailStatusElement, "Carregando detalhes e resumo...");
+      setHTML(detailElement, '<div class="loading">Consultando a Câmara e gerando o resumo...</div>');
+
+      try {
+        const response = await fetch(`/api/proposicoes/${id}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.erro || "Não foi possível carregar os detalhes.");
+        }
+
+        setText(detailStatusElement, "Detalhes carregados.");
+        renderDetalhe(data);
+      } catch (error) {
+        setText(detailStatusElement, "Falha ao carregar detalhes.");
+        renderDetalheVazio(error.message || "Erro inesperado ao abrir os detalhes.");
+      }
+    }
+
+    if (prevPageButton) prevPageButton.addEventListener("click", () => carregarLista(state.paginaAtual - 1));
+    if (nextPageButton) nextPageButton.addEventListener("click", () => carregarLista(state.paginaAtual + 1));
+
+    function lerFiltros() {
+      return {
+        keywords: document.getElementById("searchKeywords")?.value.trim() || "",
+        siglaTipo: document.getElementById("searchTipo")?.value || "",
+        numero:   document.getElementById("searchNumero")?.value.trim() || "",
+        ano:      document.getElementById("searchAno")?.value.trim() || "",
+        codTema:  document.getElementById("searchTema")?.value || ""
+      };
+    }
+
+    document.getElementById("searchButton")?.addEventListener("click", () => {
+      state.filtros = lerFiltros();
+      state.paginaAtual = 1;
+      carregarLista(1);
+    });
+
+    document.getElementById("resetButton")?.addEventListener("click", () => {
+      ["searchKeywords","searchTipo","searchNumero","searchAno","searchTema"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      state.filtros = { keywords: "", siglaTipo: "", numero: "", ano: "", codTema: "" };
+      state.paginaAtual = 1;
+      carregarLista(1);
+    });
+
+    document.getElementById("searchKeywords")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("searchButton")?.click();
+    });
+
+    async function carregarTemas() {
+      try {
+        const res = await fetch("/api/temas");
+        const data = await res.json();
+        const select = document.getElementById("searchTema");
+        if (!select) return;
+        (data.temas || []).forEach((tema) => {
+          const opt = document.createElement("option");
+          opt.value = tema.cod ?? tema.codigo ?? "";
+          opt.textContent = tema.nome ?? tema.descricao ?? opt.value;
+          select.appendChild(opt);
+        });
+      } catch (_) {}
+    }
+
+    carregarTemas();
+    carregarLista(1);
+  </script>
 </body>
 </html>
