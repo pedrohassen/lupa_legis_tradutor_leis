@@ -1,46 +1,90 @@
-# Lupa Legis — Tradutor de Leis
+# Lupa Legis — Tradutor de Proposições Legislativas
 
-## Proposta do Projeto
+Aplicação web que consulta proposições da Câmara dos Deputados e as traduz para linguagem cidadã usando uma LLM via OpenRouter.
 
-O Lupa Legis é uma Prova de Conceito (PoC) acadêmica que valida a viabilidade técnica de um sistema de simplificação e resumo de textos legislativos, tornando-os compreensíveis para o cidadão comum.
+## Tecnologias
 
-O sistema foi desenhado para atender três propósitos centrais:
+- **Node.js** (ESModules) com **Express** como servidor HTTP
+- **OpenRouter** para acesso à LLM (modelo `openai/gpt-oss-120b:free`)
+- **API de Dados Abertos da Câmara** como fonte das proposições
+- Frontend em HTML/CSS/JS puro, servido como estático pelo Express
 
-**Tradução de Termos Técnicos:** Receber o texto oficial de propostas de lei, projetos ou emendas e reescrevê-lo em linguagem acessível, eliminando o "juridiquês" sem perder o rigor técnico fundamental.
+## Pré-requisitos
 
-**Foco na Utilidade Pública:** Estruturar as informações de forma direta, respondendo objetivamente a três pilares: Qual o objetivo do projeto? Quem será impactado? O que muda na prática?
+- [Node.js](https://nodejs.org/) v18 ou superior
+- Uma chave de API do [OpenRouter](https://openrouter.ai/) (gratuita)
 
-**Validação de Viabilidade:** Servir como protótipo funcional para demonstrar que a integração de LLMs com bases de dados legislativos públicos é solução viável para promover transparência e educação política da população.
+## Como rodar
 
----
+### 1. Clone o repositório
 
-## Estratégia contra Alucinação
-
-O prompt é ancorado: o modelo recebe instrução explícita de resumir apenas o que está no trecho fornecido, sem inferir, interpretar ou complementar com conhecimento externo. O prompt de sistema nunca pede opinião — apenas compressão fiel do texto.
-
----
-
-## Processamento de Documentos Longos
-
-Proposições longas são divididas por estrutura semântica — artigos, incisos, parágrafos, ementa, justificativa — e não por contagem de linhas. A divisão respeita as unidades naturais do texto jurídico, com sobreposição entre segmentos para evitar perda de contexto nas bordas:
-
-```
-[Ementa + Justificativa]
-[Art. 1º ao Art. 5º]
-[Art. 4º ao Art. 9º]  ← sobreposição evita perda de contexto na divisão
-[Art. 8º ao Art. 12º]
-...
+```bash
+git clone <url-do-repositorio>
+cd lupa_legis_tradutor_leis
 ```
 
-Cada segmento é resumido individualmente (**rodada 1**). Ao final, os resumos parciais são concatenados e enviados numa passagem final para gerar o resumo consolidado (**rodada 2 — consolidação**), também sem acréscimos.
+### 2. Instale as dependências
 
----
+```bash
+npm install
+```
 
-## Fluxo de Processamento
+### 3. Configure a variável de ambiente
 
-1. **Entrada** — número ou texto bruto da proposição
-2. **Busca** — recupera o texto original
-3. **Segmentação** — divide por estrutura jurídica com sobreposição
-4. **Resumo parcial** — resume cada segmento
-5. **Consolidação** — resume os resumos parciais
-6. **Saída** — resumo fiel, sem viés, sem acréscimos — apenas o original comprimido
+Copie o arquivo de exemplo e preencha com sua chave do OpenRouter:
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo `.env`:
+
+```
+OPENROUTER_API_KEY=sua_chave_aqui
+```
+
+> Sem a chave, a aplicação ainda funciona: o campo de resumo exibirá a ementa original no lugar do texto gerado pela LLM.
+
+### 4. Inicie o servidor
+
+```bash
+npm start
+```
+
+Acesse **http://localhost:3000** no navegador.
+
+## Interface (frontend)
+
+O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicação:
+
+1. **Lista de proposições** — exibida no painel esquerdo, carregada automaticamente da API da Câmara.
+2. **Filtros de busca** — filtre por palavras-chave, tipo (PL, PEC, MPV...), número, ano e tema.
+3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe autores, tramitações recentes e o resumo gerado pela IA com os seguintes campos:
+   - **Objetivo** — o que a proposição pretende fazer
+   - **Impactados** — quem é afetado
+   - **Mudanças práticas** — o que muda no dia a dia
+   - **Termos técnicos explicados** — jargão legislativo em linguagem simples
+   - **Previsão de vigência** — quando entraria em vigor se aprovada
+   - **Limites** — o que o resumo não cobre
+
+## Rotas da API
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET | `/api/status` | Verifica se o servidor está no ar |
+| GET | `/api/temas` | Lista os temas disponíveis para filtro |
+| GET | `/api/proposicoes` | Lista proposições com filtros opcionais |
+| GET | `/api/proposicoes/:id` | Detalhes, autores, tramitações e resumo de uma proposição |
+| POST | `/api/llm` | Traduz um texto legislativo enviado no corpo da requisição |
+
+### Parâmetros de `/api/proposicoes`
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `pagina` | número | Página dos resultados (padrão: 1) |
+| `itens` | número | Itens por página, de 1 a 20 (padrão: 12) |
+| `siglaTipo` | string | Ex: `PL`, `PEC`, `MPV` |
+| `numero` | número | Número da proposição |
+| `ano` | número | Ano de apresentação |
+| `keywords` | string | Palavras-chave |
+| `codTema` | número | Código do tema (obtido via `/api/temas`) |
