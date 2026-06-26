@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
+import { contexto_llm } from "./context.js";
 
 const app = express();
 const PORT = 3000;
@@ -86,7 +87,7 @@ function montarContextoResumo(proposicao, autores, tramitacoes) {
     ? tramitacoes
         .slice(0, 3)
         .map((item) => {
-          const data = normalizarTexto(item?.dataTramitacao);
+          const data = normalizarTexto(item?.dataHora);
           const situacao = normalizarTexto(item?.descricaoSituacao);
           const orgao = normalizarTexto(item?.siglaOrgao);
           const despacho = normalizarTexto(item?.descricaoTramitacao);
@@ -124,7 +125,7 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
     {
       role: "system",
       content:
-        "Você é o assistente do projeto Lupa Legis. Responda estritamente com um objeto JSON válido (apenas o JSON) com as chaves: objetivo, impactados, mudancas_praticas, termos_tecnicos_explicados, previsao_vigencia, limites. Cada valor deve ser uma string em português do Brasil. O campo previsao_vigencia deve indicar quando a proposição entraria em vigor caso aprovada (ex: imediatamente, 90 dias após publicação, 1º de janeiro do ano seguinte etc.); se o texto não mencionar prazo, escreva exatamente: Não está explícito no texto fornecido. Não use Markdown, não insira asteriscos, não inclua texto fora do objeto JSON. Seja conciso; procure manter o texto total entre 200 e 270 palavras."
+        contexto_llm
     },
     {
       role: "user",
@@ -132,7 +133,7 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
     }
   ];
 
-  const texto = await consultarOpenRouter(mensagens, 220);
+  const texto = await consultarOpenRouter(mensagens, 600);
 
   // Tentar parsear diretamente como JSON
   try {
@@ -259,34 +260,34 @@ app.get("/api/status", (req, res) => {
   res.json({ status: "API local funcionando", model: MODEL, camaraApi: CAMARA_API_BASE });
 });
 
-app.post("/api/llm", async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    if (!prompt || prompt.trim().length === 0) {
-      return res.status(400).json({ erro: "O campo prompt e obrigatorio." });
-    }
-    if (prompt.length > 2000) {
-      return res.status(400).json({ erro: "Limite: 2000 caracteres." });
-    }
+// app.post("/api/llm", async (req, res) => {
+//   try {
+//     const { prompt } = req.body;
+//     if (!prompt || prompt.trim().length === 0) {
+//       return res.status(400).json({ erro: "O campo prompt e obrigatorio." });
+//     }
+//     if (prompt.length > 2000) {
+//       return res.status(400).json({ erro: "Limite: 2000 caracteres." });
+//     }
 
-    const mensagens = [
-      {
-        role: "system",
-        content:
-          "Você é o assistente oficial do projeto Lupa Legis. Traduza textos legislativos para linguagem cidadã com clareza, neutralidade e fidelidade. Use apenas o texto enviado; não invente nem complete lacunas; não use conhecimento externo; não dê opinião política ou jurídica. Se faltar dado, escreva exatamente: Não está explícito no texto fornecido. Responda em português do Brasil, frases curtas, sem tabelas e sem markdown complexo. Responda obrigatoriamente em 5 tópicos: Objetivo; Impactados; Mudanças práticas; Termos técnicos explicados; Limites. Limite de saída: entre 180 e 250 palavras, priorizando concisão e fidelidade."
-      },
-      {
-        role: "user",
-        content: prompt
-      }
-    ];
+//     const mensagens = [
+//       {
+//         role: "system",
+//         content:
+//           "Você é o assistente oficial do projeto Lupa Legis. Traduza textos legislativos para linguagem cidadã com clareza, neutralidade e fidelidade. Use apenas o texto enviado; não invente nem complete lacunas; não use conhecimento externo; não dê opinião política ou jurídica. Se faltar dado, escreva exatamente: Não está explícito no texto fornecido. Responda em português do Brasil, frases curtas, sem tabelas e sem markdown complexo. Responda obrigatoriamente em 5 tópicos: Objetivo; Impactados; Mudanças práticas; Termos técnicos explicados; Limites. Limite de saída: entre 180 e 250 palavras, priorizando concisão e fidelidade."
+//       },
+//       {
+//         role: "user",
+//         content: prompt
+//       }
+//     ];
 
-    const resposta = await consultarOpenRouter(mensagens, 700);
-    res.json({ modelo: MODEL, resposta, uso: null });
-  } catch (error) {
-    res.status(500).json({ erro: "Erro interno no servidor.", detalhe: error.message });
-  }
-});
+//     const resposta = await consultarOpenRouter(mensagens, 700);
+//     res.json({ modelo: MODEL, resposta, uso: null });
+//   } catch (error) {
+//     res.status(500).json({ erro: "Erro interno no servidor.", detalhe: error.message });
+//   }
+// });
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

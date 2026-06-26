@@ -36,10 +36,6 @@
         </div>
 
         <div class="search-form">
-          <div class="search-field">
-            <label for="searchKeywords">Palavras-chave</label>
-            <input type="text" id="searchKeywords" class="search-input" placeholder="ex: educação, saúde, previdência..." />
-          </div>
           <div class="search-row">
             <div class="search-field">
               <label for="searchTipo">Tipo</label>
@@ -60,7 +56,7 @@
             </div>
             <div class="search-field">
               <label for="searchAno">Ano</label>
-              <input type="number" id="searchAno" class="search-input" placeholder="2024" min="1900" max="2030" />
+              <input type="number" id="searchAno" class="search-input" placeholder="2026" min="1900" max="2030" />
             </div>
           </div>
           <div class="search-field">
@@ -112,7 +108,7 @@
       filtradas: [],
       selecionadaId: null,
       paginaAtual: 1,
-      filtros: { keywords: "", siglaTipo: "", numero: "", ano: "", codTema: "" }
+      filtros: { siglaTipo: "", numero: "", ano: "", codTema: "" }
     };
 
     const listElement = document.getElementById("list");
@@ -215,8 +211,19 @@
               const r = data.resumo;
               if (!r) return escapeHtml("Resumo não disponível.");
               if (typeof r === "object") {
-                if (r.objetivo || r.impactados || r.mudancas_praticas || r.termos_tecnicos_explicados || r.previsao_vigencia || r.limites) {
-                  return `<strong>Objetivo:</strong> ${escapeHtml(r.objetivo || "")}\n\n<strong>Impactados:</strong> ${escapeHtml(r.impactados || "")}\n\n<strong>Mudanças práticas:</strong> ${escapeHtml(r.mudancas_praticas || "")}\n\n<strong>Termos técnicos explicados:</strong> ${escapeHtml(r.termos_tecnicos_explicados || "")}\n\n<strong>Previsão de vigência:</strong> ${escapeHtml(r.previsao_vigencia || "Não está explícito no texto fornecido.")}\n\n<strong>Limites:</strong> ${escapeHtml(r.limites || "")}`;
+                if (r.objetivo || r.impactados || r.efeito_pratico || r.tramitacao || r.termos_tecnicos || r.limitacoes) {
+                  const campos = [
+                    ["Objetivo", r.objetivo],
+                    ["Quem é impactado", r.impactados],
+                    ["Efeito prático", r.efeito_pratico],
+                    ["Tramitação", r.tramitacao],
+                    ["Termos técnicos", r.termos_tecnicos],
+                    ["Limitações", r.limitacoes],
+                  ];
+                  return campos
+                    .filter(([, v]) => v)
+                    .map(([label, v]) => `<p><strong>${label}:</strong> ${escapeHtml(v)}</p>`)
+                    .join("");
                 }
                 return escapeHtml(r.fallback_text || r.raw || JSON.stringify(r));
               }
@@ -295,7 +302,6 @@
 
     function lerFiltros() {
       return {
-        keywords: document.getElementById("searchKeywords")?.value.trim() || "",
         siglaTipo: document.getElementById("searchTipo")?.value || "",
         numero:   document.getElementById("searchNumero")?.value.trim() || "",
         ano:      document.getElementById("searchAno")?.value.trim() || "",
@@ -310,18 +316,16 @@
     });
 
     document.getElementById("resetButton")?.addEventListener("click", () => {
-      ["searchKeywords","searchTipo","searchNumero","searchAno","searchTema"].forEach((id) => {
+      ["searchTipo","searchNumero","searchAno","searchTema"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = "";
       });
-      state.filtros = { keywords: "", siglaTipo: "", numero: "", ano: "", codTema: "" };
+      state.filtros = { siglaTipo: "", numero: "", ano: "", codTema: "" };
       state.paginaAtual = 1;
       carregarLista(1);
     });
 
-    document.getElementById("searchKeywords")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") document.getElementById("searchButton")?.click();
-    });
+
 
     async function carregarTemas() {
       try {
