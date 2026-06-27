@@ -62,13 +62,18 @@ O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicaç
 
 1. **Lista de proposições** — exibida no painel esquerdo, carregada automaticamente da API da Câmara.
 2. **Filtros de busca** — filtre por tipo (PL, PEC, MPV...), número, ano e categoria.
-3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe imediatamente os dados da Câmara (ementa, autores, tramitação recente) e, em seguida, o resumo gerado pela IA com os seguintes campos:
+3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe imediatamente os dados da Câmara (ementa, autores, tramitação recente com data formatada) e, em seguida, o resumo gerado pela IA com os seguintes campos:
    - **Objetivo** — o que a proposição solicita ou determina
    - **Quem é impactado** — grupos ou pessoas mencionados no texto
    - **Efeito prático** — o que o texto expressamente autoriza, solicita ou determina
-   - **Tramitação** — etapas cronológicas com datas e órgãos
    - **Termos técnicos** — jargão legislativo em linguagem simples
    - **Limitações** — restrições reais com base na tramitação
+
+   > A tramitação não é resumida pela IA — os dados brutos da Câmara já são exibidos acima e são mais confiáveis para esse campo. O resumo exibe um aviso ao final lembrando o usuário de verificar a fonte antes de tomar decisões.
+
+## Cache de resumos
+
+Os resumos gerados pela LLM são armazenados em memória durante a execução do servidor. Se uma proposição já foi consultada, o resumo é retornado imediatamente sem chamar a LLM novamente. O cache é limpo ao reiniciar o servidor.
 
 ## Rotas da API
 

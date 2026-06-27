@@ -188,19 +188,18 @@
       if (!el) return;
       if (!resumo) { el.innerHTML = escapeHtml("Resumo não disponível."); return; }
       if (typeof resumo === "object") {
-        if (resumo.objetivo || resumo.impactados || resumo.efeito_pratico || resumo.tramitacao || resumo.termos_tecnicos || resumo.limitacoes) {
+        if (resumo.objetivo || resumo.impactados || resumo.efeito_pratico || resumo.termos_tecnicos || resumo.limitacoes) {
           const campos = [
             ["Objetivo", resumo.objetivo],
             ["Quem é impactado", resumo.impactados],
             ["Efeito prático", resumo.efeito_pratico],
-            ["Tramitação", resumo.tramitacao],
             ["Termos técnicos", resumo.termos_tecnicos],
             ["Limitações", resumo.limitacoes],
           ];
           el.innerHTML = campos
             .filter(([, v]) => v)
             .map(([label, v]) => `<p><strong>${label}:</strong> ${escapeHtml(v)}</p>`)
-            .join("");
+            .join("") + `<p class="summary-disclaimer">Resumo gerado por IA com base nos dados oficiais da Câmara. Verifique a fonte antes de tomar decisões.</p>`;
           return;
         }
         el.innerHTML = escapeHtml(resumo.fallback_text || resumo.raw || JSON.stringify(resumo));

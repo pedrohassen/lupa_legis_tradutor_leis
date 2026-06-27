@@ -16,7 +16,6 @@ RETORNE EXCLUSIVAMENTE um objeto JSON válido, sem texto antes ou depois, sem ma
   "objetivo": "string — 1 a 3 frases descrevendo o que a proposição solicita ou determina",
   "impactados": "string — grupos ou pessoas mencionados no texto, ou 'não especificado no texto'",
   "efeito_pratico": "string — apenas o que o texto expressamente autoriza, solicita ou determina",
-  "tramitacao": "string — etapas cronológicas com datas e órgãos conforme os dados fornecidos",
   "termos_tecnicos": "string — defina apenas termos que o próprio texto explica ou que sejam de conhecimento jurídico consolidado. Nunca defina siglas não explicadas no texto",
   "limitacoes": "string — restrições reais com base na tramitação: arquivada, sem efeito normativo permanente, etc."
 }`
