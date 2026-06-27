@@ -6,7 +6,7 @@ import { contexto_llm } from "./context.js";
 const app = express();
 const PORT = 3000;
 const API_KEY = process.env.OPENROUTER_API_KEY;
-const MODEL = "openai/gpt-oss-120b:free";
+const MODEL = process.env.LLM_MODEL || "openai/gpt-oss-120b:free";
 const CAMARA_API_BASE = "https://dadosabertos.camara.leg.br/api/v2";
 const resumoCache = new Map();
 
@@ -133,7 +133,7 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
     }
   ];
 
-  const texto = await consultarOpenRouter(mensagens, 600);
+  const texto = await consultarOpenRouter(mensagens, 800);
 
   // Tentar parsear diretamente como JSON
   try {
@@ -210,22 +210,17 @@ app.get("/api/proposicoes", async (req, res) => {
 app.get("/api/proposicoes/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const [proposicaoResp, autoresResp, tramitacoesResp] = await Promise.all([
+    const [proposicaoRes, autoresRes, tramitacoesRes] = await Promise.allSettled([
       buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}`),
       buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}/autores`),
       buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}/tramitacoes`)
     ]);
 
-    const proposicao = proposicaoResp.dados ?? proposicaoResp;
-    const autores = autoresResp.dados ?? [];
-    const tramitacoes = tramitacoesResp.dados ?? [];
+    if (proposicaoRes.status === "rejected") throw proposicaoRes.reason;
 
-    const cacheKey = String(id);
-    let resumo = resumoCache.get(cacheKey);
-    if (!resumo) {
-      resumo = await gerarResumoProposicao(proposicao, autores, tramitacoes);
-      resumoCache.set(cacheKey, resumo);
-    }
+    const proposicao = proposicaoRes.value.dados ?? proposicaoRes.value;
+    const autores = autoresRes.status === "fulfilled" ? (autoresRes.value.dados ?? []) : [];
+    const tramitacoes = tramitacoesRes.status === "fulfilled" ? (tramitacoesRes.value.dados ?? []) : [];
 
     res.json({
       proposicao: {
@@ -248,11 +243,37 @@ app.get("/api/proposicoes/:id", async (req, res) => {
         situacao: normalizarTexto(item.descricaoSituacao),
         orgao: normalizarTexto(item.siglaOrgao),
         despacho: normalizarTexto(item.descricaoTramitacao)
-      })),
-      resumo
+      }))
     });
   } catch (error) {
     res.status(502).json({ erro: "Erro ao carregar detalhes da proposição.", detalhe: error.message });
+  }
+});
+
+app.get("/api/proposicoes/:id/resumo", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const cacheKey = String(id);
+    const cached = resumoCache.get(cacheKey);
+    if (cached) return res.json({ resumo: cached });
+
+    const [proposicaoRes, autoresRes, tramitacoesRes] = await Promise.allSettled([
+      buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}`),
+      buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}/autores`),
+      buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}/tramitacoes`)
+    ]);
+
+    if (proposicaoRes.status === "rejected") throw proposicaoRes.reason;
+
+    const proposicao = proposicaoRes.value.dados ?? proposicaoRes.value;
+    const autores = autoresRes.status === "fulfilled" ? (autoresRes.value.dados ?? []) : [];
+    const tramitacoes = tramitacoesRes.status === "fulfilled" ? (tramitacoesRes.value.dados ?? []) : [];
+
+    const resumo = await gerarResumoProposicao(proposicao, autores, tramitacoes);
+    resumoCache.set(cacheKey, resumo);
+    res.json({ resumo });
+  } catch (error) {
+    res.status(502).json({ erro: "Erro ao gerar resumo.", detalhe: error.message });
   }
 });
 

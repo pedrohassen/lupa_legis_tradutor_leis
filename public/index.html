@@ -138,6 +138,13 @@
       el.innerHTML = html;
     }
 
+    function formatarDataHora(valor) {
+      if (!valor) return "";
+      const d = new Date(valor);
+      if (isNaN(d.getTime())) return valor;
+      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+
     function snippet(text, size = 160) {
       const value = String(text ?? "").trim();
       if (!value) return "Sem ementa informada.";
@@ -176,6 +183,47 @@
       setHTML(detailElement, `<div class="empty">${escapeHtml(mensagem)}</div>`);
     }
 
+    function renderSummaryBox(resumo) {
+      const el = document.getElementById("resumo-ia");
+      if (!el) return;
+      if (!resumo) { el.innerHTML = escapeHtml("Resumo não disponível."); return; }
+      if (typeof resumo === "object") {
+        if (resumo.objetivo || resumo.impactados || resumo.efeito_pratico || resumo.tramitacao || resumo.termos_tecnicos || resumo.limitacoes) {
+          const campos = [
+            ["Objetivo", resumo.objetivo],
+            ["Quem é impactado", resumo.impactados],
+            ["Efeito prático", resumo.efeito_pratico],
+            ["Tramitação", resumo.tramitacao],
+            ["Termos técnicos", resumo.termos_tecnicos],
+            ["Limitações", resumo.limitacoes],
+          ];
+          el.innerHTML = campos
+            .filter(([, v]) => v)
+            .map(([label, v]) => `<p><strong>${label}:</strong> ${escapeHtml(v)}</p>`)
+            .join("");
+          return;
+        }
+        el.innerHTML = escapeHtml(resumo.fallback_text || resumo.raw || JSON.stringify(resumo));
+        return;
+      }
+      el.innerHTML = escapeHtml(String(resumo));
+    }
+
+    async function carregarResumo(id) {
+      const el = document.getElementById("resumo-ia");
+      if (!el) return;
+      el.innerHTML = '<div class="loading">Gerando resumo com IA...</div>';
+      try {
+        const response = await fetch(`/api/proposicoes/${id}/resumo`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.erro || "Não foi possível gerar o resumo.");
+        renderSummaryBox(data.resumo);
+      } catch (error) {
+        if (!document.getElementById("resumo-ia")) return;
+        el.innerHTML = `<p style="color:var(--muted);font-size:13px;margin-bottom:12px;">${escapeHtml(error.message || "Erro ao gerar resumo.")}</p><button type="button" class="btn-secondary" onclick="carregarResumo(${Number(id)})">Tentar novamente</button>`;
+      }
+    }
+
     function renderDetalhe(data) {
       const autores = (data.autores || []).map((autor) => autor.nome).filter(Boolean);
       const tramitacoes = data.tramitacoes || [];
@@ -201,35 +249,12 @@
 
           <div class="section">
             <h4>Tramitação recente</h4>
-            <p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${item.data || ""} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
+            <p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${formatarDataHora(item.data)} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
           </div>
 
           <div class="section">
             <h4>Resumo da IA</h4>
-            <div class="summary-box">
-            ${(function () {
-              const r = data.resumo;
-              if (!r) return escapeHtml("Resumo não disponível.");
-              if (typeof r === "object") {
-                if (r.objetivo || r.impactados || r.efeito_pratico || r.tramitacao || r.termos_tecnicos || r.limitacoes) {
-                  const campos = [
-                    ["Objetivo", r.objetivo],
-                    ["Quem é impactado", r.impactados],
-                    ["Efeito prático", r.efeito_pratico],
-                    ["Tramitação", r.tramitacao],
-                    ["Termos técnicos", r.termos_tecnicos],
-                    ["Limitações", r.limitacoes],
-                  ];
-                  return campos
-                    .filter(([, v]) => v)
-                    .map(([label, v]) => `<p><strong>${label}:</strong> ${escapeHtml(v)}</p>`)
-                    .join("");
-                }
-                return escapeHtml(r.fallback_text || r.raw || JSON.stringify(r));
-              }
-              return escapeHtml(String(r));
-            })()}
-            </div>
+            <div class="summary-box" id="resumo-ia"></div>
           </div>
         </div>
       `);
@@ -244,7 +269,6 @@
       try {
         const p = new URLSearchParams({ itens: String(pageSize), pagina: String(paginaNormalizada) });
         const f = state.filtros;
-        if (f.keywords) p.append("keywords", f.keywords);
         if (f.siglaTipo) p.append("siglaTipo", f.siglaTipo);
         if (f.numero)   p.append("numero",    f.numero);
         if (f.ano)      p.append("ano",       f.ano);
@@ -278,8 +302,8 @@
 
       state.selecionadaId = Number(id);
       renderLista();
-      setText(detailStatusElement, "Carregando detalhes e resumo...");
-      setHTML(detailElement, '<div class="loading">Consultando a Câmara e gerando o resumo...</div>');
+      setText(detailStatusElement, "Carregando detalhes...");
+      setHTML(detailElement, '<div class="loading">Consultando a Câmara...</div>');
 
       try {
         const response = await fetch(`/api/proposicoes/${id}`);
@@ -291,6 +315,7 @@
 
         setText(detailStatusElement, "Detalhes carregados.");
         renderDetalhe(data);
+        carregarResumo(id);
       } catch (error) {
         setText(detailStatusElement, "Falha ao carregar detalhes.");
         renderDetalheVazio(error.message || "Erro inesperado ao abrir os detalhes.");

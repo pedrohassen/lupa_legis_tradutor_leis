@@ -29,7 +29,7 @@ cd lupa_legis_tradutor_leis
 npm install
 ```
 
-### 3. Configure a variável de ambiente
+### 3. Configure as variáveis de ambiente
 
 Copie o arquivo de exemplo e preencha com sua chave do OpenRouter:
 
@@ -41,7 +41,10 @@ Edite o arquivo `.env`:
 
 ```
 OPENROUTER_API_KEY=sua_chave_aqui
+LLM_MODEL="openai/gpt-oss-120b:free"
 ```
+
+`LLM_MODEL` é opcional — sem ele o servidor usa `openai/gpt-oss-120b:free` como padrão.
 
 > Sem a chave, a aplicação ainda funciona: o campo de resumo exibirá a ementa original no lugar do texto gerado pela LLM.
 
@@ -58,14 +61,14 @@ Acesse **http://localhost:3000** no navegador.
 O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicação:
 
 1. **Lista de proposições** — exibida no painel esquerdo, carregada automaticamente da API da Câmara.
-2. **Filtros de busca** — filtre por palavras-chave, tipo (PL, PEC, MPV...), número, ano e tema.
-3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe autores, tramitações recentes e o resumo gerado pela IA com os seguintes campos:
-   - **Objetivo** — o que a proposição pretende fazer
-   - **Impactados** — quem é afetado
-   - **Mudanças práticas** — o que muda no dia a dia
-   - **Termos técnicos explicados** — jargão legislativo em linguagem simples
-   - **Previsão de vigência** — quando entraria em vigor se aprovada
-   - **Limites** — o que o resumo não cobre
+2. **Filtros de busca** — filtre por tipo (PL, PEC, MPV...), número, ano e categoria.
+3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe imediatamente os dados da Câmara (ementa, autores, tramitação recente) e, em seguida, o resumo gerado pela IA com os seguintes campos:
+   - **Objetivo** — o que a proposição solicita ou determina
+   - **Quem é impactado** — grupos ou pessoas mencionados no texto
+   - **Efeito prático** — o que o texto expressamente autoriza, solicita ou determina
+   - **Tramitação** — etapas cronológicas com datas e órgãos
+   - **Termos técnicos** — jargão legislativo em linguagem simples
+   - **Limitações** — restrições reais com base na tramitação
 
 ## Rotas da API
 
@@ -74,8 +77,8 @@ O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicaç
 | GET | `/api/status` | Verifica se o servidor está no ar |
 | GET | `/api/temas` | Lista os temas disponíveis para filtro |
 | GET | `/api/proposicoes` | Lista proposições com filtros opcionais |
-| GET | `/api/proposicoes/:id` | Detalhes, autores, tramitações e resumo de uma proposição |
-| POST | `/api/llm` | Traduz um texto legislativo enviado no corpo da requisição |
+| GET | `/api/proposicoes/:id` | Detalhes, autores e tramitações de uma proposição |
+| GET | `/api/proposicoes/:id/resumo` | Resumo gerado pela IA para uma proposição |
 
 ### Parâmetros de `/api/proposicoes`
 
@@ -86,5 +89,4 @@ O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicaç
 | `siglaTipo` | string | Ex: `PL`, `PEC`, `MPV` |
 | `numero` | número | Número da proposição |
 | `ano` | número | Ano de apresentação |
-| `keywords` | string | Palavras-chave |
 | `codTema` | número | Código do tema (obtido via `/api/temas`) |
