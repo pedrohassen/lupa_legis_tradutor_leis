@@ -75,6 +75,12 @@ O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicaç
 
 Os resumos gerados pela LLM são armazenados em memória durante a execução do servidor. Se uma proposição já foi consultada, o resumo é retornado imediatamente sem chamar a LLM novamente. O cache é limpo ao reiniciar o servidor.
 
+## Resiliência
+
+- **Timeout de 30s** nas chamadas ao OpenRouter — se o modelo não responder nesse prazo, a requisição é cancelada e o frontend exibe o botão "Tentar novamente".
+- **Retry automático em rate limit (429)** — se o modelo retornar 429, o servidor aguarda o tempo indicado pela API (`retry_after_seconds`) e tenta novamente até 3 vezes antes de retornar erro.
+- **Falhas parciais da API da Câmara** — se autores ou tramitações falharem, os detalhes da proposição ainda são exibidos com os dados disponíveis.
+
 ## Rotas da API
 
 | Método | Rota | Descrição |

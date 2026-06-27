@@ -43,10 +43,13 @@ async function buscarJson(url, options = {}) {
   }
 }
 
-async function consultarOpenRouter(messages, maxCompletionTokens = 220) {
+async function consultarOpenRouter(messages, maxCompletionTokens = 220, tentativa = 1) {
   if (!API_KEY) {
     throw new Error("OPENROUTER_API_KEY não configurada.");
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -61,8 +64,18 @@ async function consultarOpenRouter(messages, maxCompletionTokens = 220) {
       messages,
       temperature: 0.2,
       max_completion_tokens: maxCompletionTokens
-    })
+    }),
+    signal: controller.signal
   });
+
+  clearTimeout(timer);
+
+  if (response.status === 429 && tentativa < 3) {
+    const erro429 = await response.json().catch(() => ({}));
+    const espera = (erro429?.error?.metadata?.retry_after_seconds ?? 3) * 1000;
+    await new Promise((r) => setTimeout(r, espera));
+    return consultarOpenRouter(messages, maxCompletionTokens, tentativa + 1);
+  }
 
   if (!response.ok) {
     const detalhe = await response.text();
@@ -113,10 +126,9 @@ async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
     return {
       objetivo: normalizarTexto(proposicao?.ementa) || "Não informado",
       impactados: "Não está explícito no texto fornecido.",
-      mudancas_praticas: "Não está explícito no texto fornecido.",
-      termos_tecnicos_explicados: montarTituloProposicao(proposicao),
-      previsao_vigencia: "Não está explícito no texto fornecido.",
-      limites: "Resumo automático sem LLM, baseado apenas nos dados oficiais da Câmara."
+      efeito_pratico: "Não está explícito no texto fornecido.",
+      termos_tecnicos: "Não está explícito no texto fornecido.",
+      limitacoes: "Resumo automático sem LLM, baseado apenas nos dados oficiais da Câmara."
     };
   }
 
