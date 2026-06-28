@@ -5,8 +5,8 @@ Aplicação web que consulta proposições da Câmara dos Deputados e as traduz 
 ## Tecnologias
 
 - **Node.js** (ESModules) com **Express** como servidor HTTP
-- **OpenRouter** para acesso à LLM (modelo `openai/gpt-oss-120b:free`)
-- **API de Dados Abertos da Câmara** como fonte das proposições
+- **OpenRouter** para acesso à LLM (recomendado: `nvidia/nemotron-3-ultra-550b-a55b:free`)
+- **API de Dados Abertos da Câmara** como fonte das proposições e dos textos integrais
 - Frontend em HTML/CSS/JS puro, servido como estático pelo Express
 
 ## Pré-requisitos
@@ -41,10 +41,10 @@ Edite o arquivo `.env`:
 
 ```
 OPENROUTER_API_KEY=sua_chave_aqui
-LLM_MODEL="openai/gpt-oss-120b:free"
+OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
 ```
 
-`LLM_MODEL` é opcional — sem ele o servidor usa `openai/gpt-oss-120b:free` como padrão.
+`OPENROUTER_MODEL` é opcional — sem ele o servidor usa `openai/gpt-oss-120b:free` como padrão.
 
 > Sem a chave, a aplicação ainda funciona: o campo de resumo exibirá a ementa original no lugar do texto gerado pela LLM.
 
@@ -62,18 +62,29 @@ O frontend é uma SPA simples em HTML/CSS/JS sem frameworks. Ao abrir a aplicaç
 
 1. **Lista de proposições** — exibida no painel esquerdo, carregada automaticamente da API da Câmara.
 2. **Filtros de busca** — filtre por tipo (PL, PEC, MPV...), número, ano e categoria.
-3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe imediatamente os dados da Câmara (ementa, autores, tramitação recente com data formatada) e, em seguida, o resumo gerado pela IA com os seguintes campos:
+3. **Painel de detalhes** — ao clicar em uma proposição, o painel direito exibe imediatamente os dados da Câmara (ementa, autores, tramitação recente) e, em seguida, o resumo gerado pela IA com os seguintes campos:
+   - **Explicação** — síntese simples do que o projeto realmente propõe
    - **Objetivo** — o que a proposição solicita ou determina
    - **Quem é impactado** — grupos ou pessoas mencionados no texto
-   - **Efeito prático** — o que o texto expressamente autoriza, solicita ou determina
-   - **Termos técnicos** — jargão legislativo em linguagem simples
-   - **Limitações** — restrições reais com base na tramitação
+   - **Efeito prático** — direitos garantidos, obrigações criadas e áreas abrangidas
+   - **Termos técnicos** — jargão legislativo explicado em linguagem simples
+   - **Limitações** — restrições jurídicas reais com base na tramitação
 
-   > A tramitação não é resumida pela IA — os dados brutos da Câmara já são exibidos acima e são mais confiáveis para esse campo. O resumo exibe um aviso ao final lembrando o usuário de verificar a fonte antes de tomar decisões.
+   > A tramitação não é resumida pela IA — os dados brutos da Câmara já são exibidos acima e são mais confiáveis para esse campo.
+
+4. **Aviso de IA** — rodapé do resumo lembra o leitor de verificar a fonte oficial antes de tomar decisões.
+5. **Novo resumo** — botão que força a regeneração do resumo, ignorando o cache.
+6. **Tentar novamente** — botão exibido automaticamente em caso de erro na geração.
+
+## Texto integral
+
+Quando disponível, o servidor busca o texto completo da proposição via `GET /proposicoes/{id}/textos` da API da Câmara e o envia à LLM como base principal do resumo. Isso permite que a IA extraia os artigos, direitos e obrigações reais do projeto — e não apenas parafrasear a ementa.
+
+Se o texto integral não estiver disponível (PDF sem suporte ou documento ausente), o resumo é gerado com base na ementa e o campo "Limitações" do resumo informa essa restrição.
 
 ## Cache de resumos
 
-Os resumos gerados pela LLM são armazenados em memória durante a execução do servidor. Se uma proposição já foi consultada, o resumo é retornado imediatamente sem chamar a LLM novamente. O cache é limpo ao reiniciar o servidor.
+Os resumos gerados pela LLM são armazenados em memória durante a execução do servidor. Se uma proposição já foi consultada, o resumo é retornado imediatamente sem chamar a LLM novamente. O cache é limpo ao reiniciar o servidor. Use `?force=true` na rota `/resumo` ou o botão "Novo resumo" para regenerar.
 
 ## Resiliência
 
@@ -85,11 +96,11 @@ Os resumos gerados pela LLM são armazenados em memória durante a execução do
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/api/status` | Verifica se o servidor está no ar |
+| GET | `/api/status` | Verifica se o servidor está no ar e qual modelo está configurado |
 | GET | `/api/temas` | Lista os temas disponíveis para filtro |
 | GET | `/api/proposicoes` | Lista proposições com filtros opcionais |
 | GET | `/api/proposicoes/:id` | Detalhes, autores e tramitações de uma proposição |
-| GET | `/api/proposicoes/:id/resumo` | Resumo gerado pela IA para uma proposição |
+| GET | `/api/proposicoes/:id/resumo` | Resumo gerado pela IA (aceita `?force=true` para ignorar cache) |
 
 ### Parâmetros de `/api/proposicoes`
 

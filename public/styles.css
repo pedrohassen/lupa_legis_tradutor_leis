@@ -367,15 +367,6 @@ button:disabled {
   font-weight: 700;
 }
 
-.summary-disclaimer {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid #bfdbfe;
-  font-size: 11px;
-  color: var(--muted);
-  font-style: italic;
-}
-
 /* ── EMPTY / LOADING ────────────────────── */
 .empty {
   padding: 36px 20px;
@@ -406,6 +397,73 @@ button:disabled {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── RESUMO IA ──────────────────────────── */
+.resumo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.resumo-header h4 { margin-bottom: 0; }
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.resumo-aviso {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #bfdbfe;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cache-label {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.fonte-label {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.fonte-integral {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.fonte-ementa {
+  background: #fef9c3;
+  color: #92400e;
+}
+
+.resumo-erro {
+  color: #b91c1c;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.btn-retry {
+  font-size: 12px;
+  padding: 7px 14px;
+}
+
+.resumo-indisponivel {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* ── FOOTER ─────────────────────────────── */

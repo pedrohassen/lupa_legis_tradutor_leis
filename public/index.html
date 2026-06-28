@@ -128,22 +128,8 @@
         .replace(/'/g, "&#39;");
     }
 
-    function setText(el, txt) {
-      if (!el) return;
-      el.textContent = txt;
-    }
-
-    function setHTML(el, html) {
-      if (!el) return;
-      el.innerHTML = html;
-    }
-
-    function formatarDataHora(valor) {
-      if (!valor) return "";
-      const d = new Date(valor);
-      if (isNaN(d.getTime())) return valor;
-      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    }
+    function setText(el, txt) { if (el) el.textContent = txt; }
+    function setHTML(el, html) { if (el) el.innerHTML = html; }
 
     function snippet(text, size = 160) {
       const value = String(text ?? "").trim();
@@ -183,49 +169,75 @@
       setHTML(detailElement, `<div class="empty">${escapeHtml(mensagem)}</div>`);
     }
 
-    function renderSummaryBox(resumo) {
-      const el = document.getElementById("resumo-ia");
-      if (!el) return;
-      if (!resumo) { el.innerHTML = escapeHtml("Resumo não disponível."); return; }
+    function renderResumoCarregando() {
+      const box = document.getElementById("resumo-box");
+      if (box) box.innerHTML = '<div class="loading">Gerando resumo com IA...</div>';
+      const btnNovo = document.getElementById("btn-novo-resumo");
+      if (btnNovo) btnNovo.disabled = true;
+    }
+
+    function renderResumoConteudo(resumo, fromCache, textoIntegral) {
+      const box = document.getElementById("resumo-box");
+      const avisoEl = document.getElementById("resumo-aviso");
+      const btnNovo = document.getElementById("btn-novo-resumo");
+      if (!box) return;
+
+      if (btnNovo) btnNovo.disabled = false;
+
+      if (!resumo) {
+        box.innerHTML = '<p class="resumo-indisponivel">Resumo não disponível.</p>';
+        return;
+      }
+
+      if (avisoEl) avisoEl.textContent = "Resumo gerado por IA com base nos dados oficiais da Câmara. Verifique a fonte antes de tomar decisões.";
+
+      // Fallback: servidor pode ter retornado { fallback_text: "..." } com JSON dentro
+      if (typeof resumo === "object" && resumo.fallback_text) {
+        try {
+          const tentativa = JSON.parse(resumo.fallback_text);
+          if (tentativa && typeof tentativa === "object") resumo = tentativa;
+        } catch (_) {}
+      }
+
       if (typeof resumo === "object") {
-        if (resumo.objetivo || resumo.impactados || resumo.efeito_pratico || resumo.termos_tecnicos || resumo.limitacoes) {
+        const temCampos = resumo.explique || resumo.objetivo || resumo.impactados || resumo.efeito_pratico || resumo.termos_tecnicos || resumo.limitacoes;
+        if (temCampos) {
           const campos = [
+            ["Explicação", resumo.explique],
             ["Objetivo", resumo.objetivo],
             ["Quem é impactado", resumo.impactados],
             ["Efeito prático", resumo.efeito_pratico],
             ["Termos técnicos", resumo.termos_tecnicos],
-            ["Limitações", resumo.limitacoes],
+            ["Limitações", resumo.limitacoes]
           ];
-          el.innerHTML = campos
+          box.innerHTML = campos
             .filter(([, v]) => v)
-            .map(([label, v]) => `<p><strong>${label}:</strong> ${escapeHtml(v)}</p>`)
-            .join("") + `<p class="summary-disclaimer">Resumo gerado por IA com base nos dados oficiais da Câmara. Verifique a fonte antes de tomar decisões.</p>`;
+            .map(([label, v]) => `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(v)}</p>`)
+            .join("");
           return;
         }
-        el.innerHTML = escapeHtml(resumo.fallback_text || resumo.raw || JSON.stringify(resumo));
+        box.innerHTML = `<p>${escapeHtml(resumo.fallback_text || resumo.raw || JSON.stringify(resumo))}</p>`;
         return;
       }
-      el.innerHTML = escapeHtml(String(resumo));
+
+      box.innerHTML = `<p>${escapeHtml(String(resumo))}</p>`;
     }
 
-    async function carregarResumo(id) {
-      const el = document.getElementById("resumo-ia");
-      if (!el) return;
-      el.innerHTML = '<div class="loading">Gerando resumo com IA...</div>';
-      try {
-        const response = await fetch(`/api/proposicoes/${id}/resumo`);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.erro || "Não foi possível gerar o resumo.");
-        renderSummaryBox(data.resumo);
-      } catch (error) {
-        if (!document.getElementById("resumo-ia")) return;
-        el.innerHTML = `<p style="color:var(--muted);font-size:13px;margin-bottom:12px;">${escapeHtml(error.message || "Erro ao gerar resumo.")}</p><button type="button" class="btn-secondary" onclick="carregarResumo(${Number(id)})">Tentar novamente</button>`;
-      }
+    function renderResumoErro(mensagem, id) {
+      const box = document.getElementById("resumo-box");
+      const btnNovo = document.getElementById("btn-novo-resumo");
+      if (!box) return;
+      if (btnNovo) btnNovo.disabled = false;
+      box.innerHTML = `
+        <p class="resumo-erro">${escapeHtml(mensagem || "Erro ao gerar resumo.")}</p>
+        <button type="button" class="btn-secondary btn-retry" onclick="carregarResumo(${id}, false)">&#8635; Tentar novamente</button>
+      `;
     }
 
     function renderDetalhe(data) {
       const autores = (data.autores || []).map((autor) => autor.nome).filter(Boolean);
       const tramitacoes = data.tramitacoes || [];
+      const id = data.proposicao.id;
 
       setHTML(detailElement, `
         <h3>${escapeHtml(data.proposicao.titulo)}</h3>
@@ -248,15 +260,37 @@
 
           <div class="section">
             <h4>Tramitação recente</h4>
-            <p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => `${formatarDataHora(item.data)} ${item.orgao || ""} ${item.situacao || ""}`.trim()).join("\n") : "Não informada")}</p>
+            <p class="detail-text">${escapeHtml(tramitacoes.length ? tramitacoes.map((item) => {
+              const dataFormatada = item.data ? new Date(item.data).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+              return `${dataFormatada} ${item.orgao || ""} ${item.situacao || ""}`.trim();
+            }).join("\n") : "Não informada")}</p>
           </div>
 
           <div class="section">
-            <h4>Resumo da IA</h4>
-            <div class="summary-box" id="resumo-ia"></div>
+            <div class="resumo-header">
+              <h4>Resumo da IA</h4>
+              <button type="button" id="btn-novo-resumo" class="btn-secondary btn-sm" onclick="carregarResumo(${id}, true)" disabled>&#8635; Novo resumo</button>
+            </div>
+            <div id="resumo-box" class="summary-box">
+              <div class="loading">Gerando resumo com IA...</div>
+            </div>
+            <p id="resumo-aviso" class="resumo-aviso"></p>
           </div>
         </div>
       `);
+    }
+
+    async function carregarResumo(id, force = false) {
+      renderResumoCarregando();
+      try {
+        const url = `/api/proposicoes/${id}/resumo${force ? "?force=true" : ""}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.erro || "Não foi possível gerar o resumo.");
+        renderResumoConteudo(data.resumo, data.cache, data.textoIntegral);
+      } catch (error) {
+        renderResumoErro(error.message, id);
+      }
     }
 
     async function carregarLista(pagina = state.paginaAtual) {
@@ -269,15 +303,13 @@
         const p = new URLSearchParams({ itens: String(pageSize), pagina: String(paginaNormalizada) });
         const f = state.filtros;
         if (f.siglaTipo) p.append("siglaTipo", f.siglaTipo);
-        if (f.numero)   p.append("numero",    f.numero);
-        if (f.ano)      p.append("ano",       f.ano);
-        if (f.codTema)  p.append("codTema",   f.codTema);
+        if (f.numero)    p.append("numero",    f.numero);
+        if (f.ano)       p.append("ano",       f.ano);
+        if (f.codTema)   p.append("codTema",   f.codTema);
+
         const response = await fetch(`/api/proposicoes?${p.toString()}`);
         const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.erro || "Não foi possível carregar a lista.");
-        }
+        if (!response.ok) throw new Error(data.erro || "Não foi possível carregar a lista.");
 
         state.proposicoes = data.proposicoes || [];
         state.filtradas = [...state.proposicoes];
@@ -302,19 +334,16 @@
       state.selecionadaId = Number(id);
       renderLista();
       setText(detailStatusElement, "Carregando detalhes...");
-      setHTML(detailElement, '<div class="loading">Consultando a Câmara...</div>');
+      setHTML(detailElement, '<div class="loading">Consultando a API da Câmara...</div>');
 
       try {
         const response = await fetch(`/api/proposicoes/${id}`);
         const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.erro || "Não foi possível carregar os detalhes.");
-        }
+        if (!response.ok) throw new Error(data.erro || "Não foi possível carregar os detalhes.");
 
         setText(detailStatusElement, "Detalhes carregados.");
         renderDetalhe(data);
-        carregarResumo(id);
+        carregarResumo(id, false);
       } catch (error) {
         setText(detailStatusElement, "Falha ao carregar detalhes.");
         renderDetalheVazio(error.message || "Erro inesperado ao abrir os detalhes.");
@@ -324,17 +353,13 @@
     if (prevPageButton) prevPageButton.addEventListener("click", () => carregarLista(state.paginaAtual - 1));
     if (nextPageButton) nextPageButton.addEventListener("click", () => carregarLista(state.paginaAtual + 1));
 
-    function lerFiltros() {
-      return {
-        siglaTipo: document.getElementById("searchTipo")?.value || "",
-        numero:   document.getElementById("searchNumero")?.value.trim() || "",
-        ano:      document.getElementById("searchAno")?.value.trim() || "",
-        codTema:  document.getElementById("searchTema")?.value || ""
-      };
-    }
-
     document.getElementById("searchButton")?.addEventListener("click", () => {
-      state.filtros = lerFiltros();
+      state.filtros = {
+        siglaTipo: document.getElementById("searchTipo")?.value || "",
+        numero:    document.getElementById("searchNumero")?.value.trim() || "",
+        ano:       document.getElementById("searchAno")?.value.trim() || "",
+        codTema:   document.getElementById("searchTema")?.value || ""
+      };
       state.paginaAtual = 1;
       carregarLista(1);
     });
@@ -348,8 +373,6 @@
       state.paginaAtual = 1;
       carregarLista(1);
     });
-
-
 
     async function carregarTemas() {
       try {

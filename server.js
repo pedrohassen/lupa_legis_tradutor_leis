@@ -6,7 +6,7 @@ import { contexto_llm } from "./context.js";
 const app = express();
 const PORT = 3000;
 const API_KEY = process.env.OPENROUTER_API_KEY;
-const MODEL = process.env.LLM_MODEL || "openai/gpt-oss-120b:free";
+const MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-oss-120b:free";
 const CAMARA_API_BASE = "https://dadosabertos.camara.leg.br/api/v2";
 const resumoCache = new Map();
 
@@ -36,39 +36,44 @@ async function buscarJson(url, options = {}) {
     }
     return response.json();
   } catch (err) {
-    if (err.name === "AbortError") throw new Error(`Tempo limite esgotado ao consultar a API da Câmara. Tente novamente.`);
+    if (err.name === "AbortError") throw new Error("Tempo limite esgotado ao consultar a API da Câmara. Tente novamente.");
     throw err;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function consultarOpenRouter(messages, maxCompletionTokens = 220, tentativa = 1) {
-  if (!API_KEY) {
-    throw new Error("OPENROUTER_API_KEY não configurada.");
-  }
+async function consultarOpenRouter(messages, maxCompletionTokens = 800, tentativa = 1) {
+  if (!API_KEY) throw new Error("OPENROUTER_API_KEY não configurada.");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": `http://localhost:${PORT}`,
-      "X-OpenRouter-Title": "Lupa Legis - Resumo de proposições"
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: 0.2,
-      max_completion_tokens: maxCompletionTokens
-    }),
-    signal: controller.signal
-  });
-
-  clearTimeout(timer);
+  let response;
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": `http://localhost:${PORT}`,
+        "X-OpenRouter-Title": "Lupa Legis - Resumo de proposições"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature: 0.2,
+        max_completion_tokens: maxCompletionTokens,
+        response_format: { type: "json_object" }
+      }),
+      signal: controller.signal
+    });
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Tempo limite esgotado ao consultar a LLM. Tente novamente.");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status === 429 && tentativa < 3) {
     const erro429 = await response.json().catch(() => ({}));
@@ -84,14 +89,65 @@ async function consultarOpenRouter(messages, maxCompletionTokens = 220, tentativ
 
   const data = await response.json();
   const texto = data.choices?.[0]?.message?.content;
-  if (!texto) {
-    throw new Error("Resposta vazia ou inesperada da LLM.");
-  }
+  if (!texto) throw new Error("Resposta vazia ou inesperada da LLM.");
 
   return texto;
 }
 
-function montarContextoResumo(proposicao, autores, tramitacoes) {
+// Busca o texto integral da proposição no endpoint /textos da Câmara.
+// Tenta formatos em ordem de preferência: HTML, depois o que vier.
+// Retorna string com o texto bruto extraído, ou null se não disponível.
+async function buscarTextoIntegral(id) {
+  try {
+    const data = await buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}/textos`);
+    const textos = data.dados ?? [];
+    if (!textos.length) return null;
+
+    const PREFERIDOS = ["texto", "inteiro teor", "substitutivo", "redação final"];
+    const ordenados = [...textos].sort((a, b) => {
+      const tipoA = normalizarTexto(a.tipo).toLowerCase();
+      const tipoB = normalizarTexto(b.tipo).toLowerCase();
+      const rankA = PREFERIDOS.findIndex((p) => tipoA.includes(p));
+      const rankB = PREFERIDOS.findIndex((p) => tipoB.includes(p));
+      return (rankA === -1 ? 99 : rankA) - (rankB === -1 ? 99 : rankB);
+    });
+
+    for (const doc of ordenados) {
+      const url = doc.url ?? doc.urlTexto;
+      if (!url) continue;
+
+      // Só tenta buscar HTML — PDF sem dependências extras não é viável
+      if (url.endsWith(".pdf")) continue;
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        const resp = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        if (!resp.ok) continue;
+
+        const contentType = resp.headers.get("content-type") ?? "";
+        if (contentType.includes("pdf")) continue;
+
+        const html = await resp.text();
+        // Remove tags HTML e normaliza espaços
+        const texto = html
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (texto.length > 200) return texto.slice(0, 12000); // limita tokens
+      } catch (_) {
+        continue;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function montarContextoResumo(proposicao, autores, tramitacoes, textoIntegral) {
   const autoresTexto = autores.length
     ? autores.map((autor) => normalizarTexto(autor?.nomeAutor || autor?.nome)).filter(Boolean).join(", ")
     : "Não informado";
@@ -110,67 +166,59 @@ function montarContextoResumo(proposicao, autores, tramitacoes) {
         .join("\n")
     : "Não informado";
 
-  return [
+  const partes = [
     `Título: ${montarTituloProposicao(proposicao)}`,
     `Ementa: ${normalizarTexto(proposicao?.ementa) || "Não informada"}`,
     `Tipo: ${normalizarTexto(proposicao?.descricaoTipo || proposicao?.siglaTipo) || "Não informado"}`,
     `Situação: ${normalizarTexto(proposicao?.statusProposicao?.descricaoSituacao || proposicao?.statusProposicao?.descricaoTramitacao) || "Não informada"}`,
     `Autores: ${autoresTexto}`,
     `Tramitações recentes:\n${tramitacoesTexto}`
-  ].join("\n\n");
+  ];
+
+  if (textoIntegral) {
+    partes.push(`Texto integral da proposição (use este como base principal do resumo):\n${textoIntegral}`);
+  } else {
+    partes.push("Texto integral: não disponível. Base o resumo apenas na ementa e nos dados acima.");
+  }
+
+  return partes.join("\n\n");
 }
 
-async function gerarResumoProposicao(proposicao, autores, tramitacoes) {
-  // Se não há API_KEY, retornamos um objeto fallback com campos previsíveis
+async function gerarResumoProposicao(proposicao, autores, tramitacoes, textoIntegral) {
   if (!API_KEY) {
     return {
+      explique: normalizarTexto(proposicao?.ementa) || "Não informado",
       objetivo: normalizarTexto(proposicao?.ementa) || "Não informado",
-      impactados: "Não está explícito no texto fornecido.",
-      efeito_pratico: "Não está explícito no texto fornecido.",
-      termos_tecnicos: "Não está explícito no texto fornecido.",
+      impactados: "não consta no texto",
+      efeito_pratico: "não consta no texto",
+      termos_tecnicos: "não consta no texto",
       limitacoes: "Resumo automático sem LLM, baseado apenas nos dados oficiais da Câmara."
     };
   }
 
-  const contexto = montarContextoResumo(proposicao, autores, tramitacoes);
+  const contexto = montarContextoResumo(proposicao, autores, tramitacoes, textoIntegral);
   const mensagens = [
-    {
-      role: "system",
-      content:
-        contexto_llm
-    },
-    {
-      role: "user",
-      content: `Contexto da proposição:\n\n${contexto}\n\nGere apenas o objeto JSON conforme o contrato acima.`
-    }
+    { role: "system", content: contexto_llm },
+    { role: "user", content: `Contexto da proposição:\n\n${contexto}\n\nGere apenas o objeto JSON conforme o contrato acima.` }
   ];
 
-  const texto = await consultarOpenRouter(mensagens, 800);
+  const textoRaw = await consultarOpenRouter(mensagens, 1500);
+  const texto = textoRaw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
-  // Tentar parsear diretamente como JSON
   try {
     const parsed = JSON.parse(texto);
-    if (parsed && typeof parsed === "object") {
-      return parsed;
-    }
-  } catch (err) {
-    // tentar extrair um trecho JSON da resposta (entre a primeira '{' e a última '}')
-    const match = texto.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        const parsed2 = JSON.parse(match[0]);
-        if (parsed2 && typeof parsed2 === "object") {
-          return parsed2;
-        }
-      } catch (err2) {
-        // segue para fallback
-      }
-    }
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch (_) {}
+
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (_) {}
   }
 
-  // Fallback: limpar asteriscos e retornar texto em campo de fallback
-  const cleaned = String(texto).replace(/\*+/g, "").trim();
-  return { fallback_text: cleaned, raw: cleaned };
+  return { fallback_text: texto.replace(/\*+/g, "").trim() };
 }
 
 app.get("/api/temas", async (req, res) => {
@@ -208,12 +256,7 @@ app.get("/api/proposicoes", async (req, res) => {
       dataApresentacao: proposicao.dataApresentacao
     }));
 
-    res.json({
-      proposicoes,
-      pagina,
-      itens,
-      consulta: url
-    });
+    res.json({ proposicoes, pagina, itens, consulta: url });
   } catch (error) {
     res.status(502).json({ erro: "Erro ao consultar a Câmara.", detalhe: error.message });
   }
@@ -262,12 +305,17 @@ app.get("/api/proposicoes/:id", async (req, res) => {
   }
 });
 
+// Rota separada de resumo — permite carregamento lazy e regeneração via ?force=true
 app.get("/api/proposicoes/:id/resumo", async (req, res) => {
   try {
     const { id } = req.params;
+    const force = req.query.force === "true";
     const cacheKey = String(id);
-    const cached = resumoCache.get(cacheKey);
-    if (cached) return res.json({ resumo: cached });
+
+    if (!force) {
+      const cached = resumoCache.get(cacheKey);
+      if (cached) return res.json({ resumo: cached, cache: true });
+    }
 
     const [proposicaoRes, autoresRes, tramitacoesRes] = await Promise.allSettled([
       buscarJson(`${CAMARA_API_BASE}/proposicoes/${id}`),
@@ -281,9 +329,10 @@ app.get("/api/proposicoes/:id/resumo", async (req, res) => {
     const autores = autoresRes.status === "fulfilled" ? (autoresRes.value.dados ?? []) : [];
     const tramitacoes = tramitacoesRes.status === "fulfilled" ? (tramitacoesRes.value.dados ?? []) : [];
 
-    const resumo = await gerarResumoProposicao(proposicao, autores, tramitacoes);
+    const textoIntegral = await buscarTextoIntegral(proposicao.id);
+    const resumo = await gerarResumoProposicao(proposicao, autores, tramitacoes, textoIntegral);
     resumoCache.set(cacheKey, resumo);
-    res.json({ resumo });
+    res.json({ resumo, cache: false, textoIntegral: !!textoIntegral });
   } catch (error) {
     res.status(502).json({ erro: "Erro ao gerar resumo.", detalhe: error.message });
   }
@@ -292,35 +341,6 @@ app.get("/api/proposicoes/:id/resumo", async (req, res) => {
 app.get("/api/status", (req, res) => {
   res.json({ status: "API local funcionando", model: MODEL, camaraApi: CAMARA_API_BASE });
 });
-
-// app.post("/api/llm", async (req, res) => {
-//   try {
-//     const { prompt } = req.body;
-//     if (!prompt || prompt.trim().length === 0) {
-//       return res.status(400).json({ erro: "O campo prompt e obrigatorio." });
-//     }
-//     if (prompt.length > 2000) {
-//       return res.status(400).json({ erro: "Limite: 2000 caracteres." });
-//     }
-
-//     const mensagens = [
-//       {
-//         role: "system",
-//         content:
-//           "Você é o assistente oficial do projeto Lupa Legis. Traduza textos legislativos para linguagem cidadã com clareza, neutralidade e fidelidade. Use apenas o texto enviado; não invente nem complete lacunas; não use conhecimento externo; não dê opinião política ou jurídica. Se faltar dado, escreva exatamente: Não está explícito no texto fornecido. Responda em português do Brasil, frases curtas, sem tabelas e sem markdown complexo. Responda obrigatoriamente em 5 tópicos: Objetivo; Impactados; Mudanças práticas; Termos técnicos explicados; Limites. Limite de saída: entre 180 e 250 palavras, priorizando concisão e fidelidade."
-//       },
-//       {
-//         role: "user",
-//         content: prompt
-//       }
-//     ];
-
-//     const resposta = await consultarOpenRouter(mensagens, 700);
-//     res.json({ modelo: MODEL, resposta, uso: null });
-//   } catch (error) {
-//     res.status(500).json({ erro: "Erro interno no servidor.", detalhe: error.message });
-//   }
-// });
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
